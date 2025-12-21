@@ -10,6 +10,7 @@ import { initCommand } from '../src/commands/init.js';
 import { potCommand } from '../src/commands/pot.js';
 import { qitCommand, qitVersionCommand } from '../src/commands/qit.js';
 import { syncCommand } from '../src/commands/sync.js';
+import { phpcsCommand } from '../src/commands/phpcs.js';
 
 program
   .name('wc-deploy')
@@ -40,6 +41,16 @@ program
   .option('--dry-run', 'Simulate without making changes')
   .action(potCommand);
 
+// PHPCS command
+program
+  .command('phpcs')
+  .description('Run PHP CodeSniffer with WooCommerce coding standards')
+  .option('--fix', 'Auto-fix issues using PHPCBF')
+  .option('--errors-only', 'Show only errors, not warnings')
+  .option('--path <path>', 'Specific file or directory to scan')
+  .option('--no-config', 'Skip phpcs.xml generation prompt')
+  .action(phpcsCommand);
+
 // QIT command
 program
   .command('qit [testType]')
@@ -61,6 +72,7 @@ program
   .command('sync')
   .description('Quick compatibility update - check WP/WC versions, bump patch, build, deploy, commit, push')
   .option('--dry-run', 'Preview changes without executing')
+  .option('--skip-phpcs', 'Skip PHPCS coding standards check')
   .action(syncCommand);
 
 // Version command
@@ -77,6 +89,7 @@ program
   .command('deploy')
   .description('Full deployment: version bump, build, git tag, and deploy to WooCommerce.com')
   .option('-v, --version <version>', 'Version number (e.g., 2.3.8)')
+  .option('--skip-phpcs', 'Skip PHPCS coding standards check')
   .option('--skip-tests', 'Skip QIT tests')
   .option('--skip-build', 'Skip build step')
   .option('--skip-deploy', 'Skip deployment to WooCommerce.com')
@@ -96,6 +109,7 @@ program.on('command:*', function () {
   console.log(chalk.cyan('  init     ') + chalk.gray('Initialize .deployrc.json'));
   console.log(chalk.cyan('  build    ') + chalk.gray('Build distribution package'));
   console.log(chalk.cyan('  pot      ') + chalk.gray('Generate POT file'));
+  console.log(chalk.cyan('  phpcs    ') + chalk.gray('Run PHP CodeSniffer with WooCommerce standards'));
   console.log(chalk.cyan('  qit      ') + chalk.gray('Run QIT tests (use "qit version" to check deployed version)'));
   console.log(chalk.cyan('  sync     ') + chalk.gray('Quick WP/WC compatibility update'));
   console.log(chalk.cyan('  version  ') + chalk.gray('Update version numbers'));

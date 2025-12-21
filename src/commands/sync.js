@@ -16,6 +16,7 @@ import { updateVersionInFiles } from '../tasks/version-updater.js';
 import { updateChangelog } from '../tasks/changelog-updater.js';
 import { runBuild } from '../tasks/builder.js';
 import { deployToWooCommerce } from '../tasks/deployer.js';
+import { runPhpcsCheck } from './phpcs.js';
 
 /**
  * Sync command - quick compatibility update
@@ -41,6 +42,21 @@ export async function syncCommand(options) {
   }
   console.log(chalk.green('clean'));
   console.log();
+
+  // Step 1b: Run PHPCS check (unless skipped)
+  if (!options.skipPhpcs) {
+    logger.step('Running PHPCS coding standards check...');
+    const phpcsResult = await runPhpcsCheck({ skipIfMissing: true });
+
+    if (!phpcsResult) {
+      logger.error('PHPCS check failed - fix coding standards violations before syncing');
+      logger.info('Run "wc-deploy phpcs" to see details, or "wc-deploy phpcs --fix" to auto-fix');
+      logger.info('Or use --skip-phpcs to bypass this check');
+      process.exit(1);
+    }
+    logger.success('PHPCS check passed');
+    console.log();
+  }
 
   // Step 2: Load config
   const config = await loadConfig();
