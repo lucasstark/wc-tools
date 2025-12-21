@@ -1,0 +1,35 @@
+{
+  "name": "wc-deploy",
+  "version": "1.0.0",
+  "description": "CLI tool for deploying WooCommerce extensions",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "wc-deploy": "./bin/wc-deploy.js"
+  },
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "woocommerce",
+    "deployment",
+    "cli"
+  ],
+  "author": "Lucas Stark",
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "chalk": "^5.6.2",
+    "clean-css": "^5.3.3",
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
+    "execa": "^9.6.1",
+    "form-data": "^4.0.5",
+    "glob": "13.0.0",
+    "inquirer": "^13.1.0",
+    "node-fetch": "^3.3.2",
+    "ora": "^9.0.0",
+    "semver": "^7.7.3",
+    "wp-pot": "^1.10.2"
+  }
+}

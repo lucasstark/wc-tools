@@ -1,0 +1,24 @@
+{
+  "productId": "YOUR_PRODUCT_ID_HERE",
+  "slug": "your-plugin-slug",
+  "mainFile": "your-plugin-slug.php",
+  "versionFiles": [
+    {
+      "file": "your-plugin-slug.php",
+      "pattern": " * Version: {{version}}"
+    },
+    {
+      "file": "package.json",
+      "pattern": "\"version\": \"{{version}}\""
+    }
+  ],
+  "minifyCss": true,
+  "cssPath": "assets/css",
+  "generatePot": true,
+  "exclude": [
+    "assets/sass",
+    "assets/js/src",
+    "*.map"
+  ],
+  "distPath": "./dist"
+}
