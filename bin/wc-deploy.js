@@ -9,6 +9,7 @@ import { statusCommand } from '../src/commands/status.js';
 import { initCommand } from '../src/commands/init.js';
 import { potCommand } from '../src/commands/pot.js';
 import { qitCommand, qitVersionCommand } from '../src/commands/qit.js';
+import { syncCommand } from '../src/commands/sync.js';
 
 program
   .name('wc-deploy')
@@ -55,11 +56,19 @@ program
     return qitCommand(testType, options);
   });
 
+// Sync command
+program
+  .command('sync')
+  .description('Quick compatibility update - check WP/WC versions, bump patch, build, deploy, commit, push')
+  .option('--dry-run', 'Preview changes without executing')
+  .action(syncCommand);
+
 // Version command
 program
   .command('version [newVersion]')
   .description('Update version numbers. Interactive prompt if no version specified.')
   .option('--dry-run', 'Simulate without making changes')
+  .option('-f, --force', 'Skip sanity checks and prompts')
   .option('-m, --message <entry>', 'Changelog entry (can be used multiple times)', (val, acc) => { acc.push(val); return acc; }, [])
   .action(versionCommand);
 
@@ -88,6 +97,7 @@ program.on('command:*', function () {
   console.log(chalk.cyan('  build    ') + chalk.gray('Build distribution package'));
   console.log(chalk.cyan('  pot      ') + chalk.gray('Generate POT file'));
   console.log(chalk.cyan('  qit      ') + chalk.gray('Run QIT tests (use "qit version" to check deployed version)'));
+  console.log(chalk.cyan('  sync     ') + chalk.gray('Quick WP/WC compatibility update'));
   console.log(chalk.cyan('  version  ') + chalk.gray('Update version numbers'));
   console.log(chalk.cyan('  deploy   ') + chalk.gray('Full deployment workflow'));
   console.log(chalk.cyan('  status   ') + chalk.gray('Check deployment status'));

@@ -104,17 +104,43 @@ export async function isGitRepo() {
 /**
  * Commit all changes and create an annotated tag for the version
  */
-export async function commitAndTagVersion(version) {
+export async function commitAndTagVersion(version, message = null) {
   try {
     // Stage all changes
     await execa('git', ['add', '-A'], { timeout: 10000 });
 
-    // Commit with version as message
-    await execa('git', ['commit', '-m', version], { timeout: 30000 });
+    // Commit with version as message (or custom message)
+    const commitMessage = message || version;
+    await execa('git', ['commit', '-m', commitMessage], { timeout: 30000 });
 
     // Create annotated tag
     await execa('git', ['tag', '-a', version, '-m', version], { timeout: 10000 });
 
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Check if working directory is clean (no uncommitted changes)
+ */
+export async function isRepoClean() {
+  try {
+    const result = await execa('git', ['status', '--porcelain'], { timeout: 5000 });
+    return result.stdout.trim() === '';
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Push commits and tags to origin
+ */
+export async function pushWithTags() {
+  try {
+    await execa('git', ['push'], { timeout: 60000 });
+    await execa('git', ['push', '--tags'], { timeout: 60000 });
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

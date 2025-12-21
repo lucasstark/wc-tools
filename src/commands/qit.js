@@ -2,9 +2,9 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { access } from 'fs/promises';
 import { join } from 'path';
-import { loadConfig } from '../utils/config-loader.js';
+import semver from 'semver';
+import { loadConfig, getCurrentVersion } from '../utils/config-loader.js';
 import { logger } from '../utils/logger.js';
-import { getCurrentVersion } from '../utils/config-loader.js';
 
 const AVAILABLE_TESTS = ['security', 'activation', 'api', 'e2e', 'phpstan', 'phpcompatibility'];
 
@@ -70,7 +70,7 @@ export async function qitVersionCommand(options) {
 
     if (localVersion === latest.version) {
       logger.success('Local version matches deployed version');
-    } else if (localVersion > latest.version) {
+    } else if (semver.gt(localVersion, latest.version)) {
       logger.warn(`Local (${localVersion}) is ahead of deployed (${latest.version})`);
     } else {
       logger.error(`Local (${localVersion}) is behind deployed (${latest.version})`);
