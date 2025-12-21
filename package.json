@@ -1,10 +1,11 @@
 {
-  "name": "wc-deploy",
+  "name": "es-cli",
   "version": "1.0.0",
-  "description": "CLI tool for deploying WooCommerce extensions",
+  "description": "Element Stark CLI - Build and deploy WooCommerce extensions",
   "type": "module",
   "main": "src/index.js",
   "bin": {
+    "es": "./bin/wc-deploy.js",
     "wc-deploy": "./bin/wc-deploy.js"
   },
   "scripts": {

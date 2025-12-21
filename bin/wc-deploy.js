@@ -13,8 +13,8 @@ import { syncCommand } from '../src/commands/sync.js';
 import { phpcsCommand } from '../src/commands/phpcs.js';
 
 program
-  .name('wc-deploy')
-  .description('CLI tool for building and deploying WooCommerce extensions')
+  .name('es')
+  .description('Element Stark CLI - Build and deploy WooCommerce extensions')
   .version('1.0.0');
 
 // Init command
