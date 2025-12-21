@@ -44,11 +44,11 @@ program
 // PHPCS command
 program
   .command('phpcs')
-  .description('Run PHP CodeSniffer with WooCommerce coding standards')
+  .description('Run PHP CodeSniffer security check (escaping, sanitization, SQL)')
   .option('--fix', 'Auto-fix issues using PHPCBF')
+  .option('--full', 'Use full WooCommerce-Core standards instead of security-only')
   .option('--errors-only', 'Show only errors, not warnings')
   .option('--path <path>', 'Specific file or directory to scan')
-  .option('--no-config', 'Skip phpcs.xml generation prompt')
   .action(phpcsCommand);
 
 // QIT command

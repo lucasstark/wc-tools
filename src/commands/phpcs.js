@@ -1,22 +1,18 @@
 import chalk from 'chalk';
 import { execa } from 'execa';
-import { access, readFile, writeFile } from 'fs/promises';
+import { access, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { homedir } from 'os';
 import inquirer from 'inquirer';
 import { loadConfig } from '../utils/config-loader.js';
 import { logger } from '../utils/logger.js';
 
-/**
- * Check if a command exists
- */
-async function commandExists(cmd, args = ['--version']) {
-  try {
-    await execa(cmd, args, { timeout: 10000 });
-    return true;
-  } catch (error) {
-    return error.code !== 'ENOENT';
-  }
-}
+// Global paths
+const GLOBAL_COMPOSER_BIN = join(homedir(), '.composer/vendor/bin');
+const GLOBAL_PHPCS = join(GLOBAL_COMPOSER_BIN, 'phpcs');
+const GLOBAL_PHPCBF = join(GLOBAL_COMPOSER_BIN, 'phpcbf');
+const GLOBAL_SECURITY_RULESET = join(homedir(), '.composer/phpcs-security.xml');
+const GLOBAL_SNIFFS_PATH = join(homedir(), '.composer/vendor/woocommerce/woocommerce-sniffs');
 
 /**
  * Check if file exists
@@ -31,56 +27,72 @@ async function fileExists(path) {
 }
 
 /**
- * Get the phpcs binary path
+ * Get the phpcs binary path (checks global first, then local)
  */
 async function getPhpcsBinary() {
-  const localPath = join(process.cwd(), 'vendor/bin/phpcs');
+  // Check global composer bin first
+  if (await fileExists(GLOBAL_PHPCS)) {
+    return GLOBAL_PHPCS;
+  }
 
+  // Check local vendor
+  const localPath = join(process.cwd(), 'vendor/bin/phpcs');
   if (await fileExists(localPath)) {
     return localPath;
   }
 
-  // Check if globally available
-  if (await commandExists('phpcs')) {
+  // Check if globally available in PATH
+  try {
+    await execa('phpcs', ['--version'], { timeout: 5000 });
     return 'phpcs';
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the phpcbf binary path
+ */
+async function getPhpcbfBinary() {
+  if (await fileExists(GLOBAL_PHPCBF)) {
+    return GLOBAL_PHPCBF;
   }
 
-  return null;
-}
-
-/**
- * Check if WooCommerce sniffs are installed
- */
-async function hasWooCommerceSniffs() {
-  const sniffsPath = join(process.cwd(), 'vendor/woocommerce/woocommerce-sniffs');
-  return await fileExists(sniffsPath);
-}
-
-/**
- * Check if composer is available
- */
-async function hasComposer() {
-  return await commandExists('composer');
-}
-
-/**
- * Install WooCommerce sniffs via composer
- */
-async function installSniffs() {
-  const spinner = logger.spinner('Installing woocommerce/woocommerce-sniffs...');
+  const localPath = join(process.cwd(), 'vendor/bin/phpcbf');
+  if (await fileExists(localPath)) {
+    return localPath;
+  }
 
   try {
-    await execa('composer', ['require', '--dev', 'woocommerce/woocommerce-sniffs'], {
-      timeout: 300000, // 5 minutes
-      cwd: process.cwd()
-    });
-    spinner.succeed('WooCommerce sniffs installed');
-    return true;
-  } catch (error) {
-    spinner.fail('Failed to install WooCommerce sniffs');
-    logger.error(error.message);
-    return false;
+    await execa('phpcbf', ['--version'], { timeout: 5000 });
+    return 'phpcbf';
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Check if WooCommerce sniffs are available (global or local)
+ */
+async function hasWooCommerceSniffs() {
+  // Check global first
+  if (await fileExists(GLOBAL_SNIFFS_PATH)) {
+    return true;
+  }
+
+  // Check local
+  const localPath = join(process.cwd(), 'vendor/woocommerce/woocommerce-sniffs');
+  return await fileExists(localPath);
+}
+
+/**
+ * Get the security ruleset path
+ */
+async function getSecurityRuleset() {
+  if (await fileExists(GLOBAL_SECURITY_RULESET)) {
+    return GLOBAL_SECURITY_RULESET;
+  }
+  return null;
 }
 
 /**
@@ -139,9 +151,8 @@ async function generatePhpcsConfig(config) {
  * Run PHPCS command
  */
 export async function phpcsCommand(options) {
-  console.log(chalk.bold.cyan('\n  PHP CodeSniffer - WooCommerce Standards\n'));
-
-  const config = await loadConfig();
+  const title = options.full ? 'PHP CodeSniffer - Full WooCommerce Standards' : 'PHP CodeSniffer - Security Check';
+  console.log(chalk.bold.cyan(`\n  ${title}\n`));
 
   // Check for phpcs binary
   const phpcs = await getPhpcsBinary();
@@ -149,86 +160,59 @@ export async function phpcsCommand(options) {
   if (!phpcs) {
     logger.error('PHPCS not found');
     console.log();
-    logger.info('Install via composer:');
-    console.log(chalk.gray('  composer require --dev woocommerce/woocommerce-sniffs'));
+    logger.info('Install globally via composer:');
+    console.log(chalk.gray('  composer global require woocommerce/woocommerce-sniffs'));
     console.log();
     process.exit(1);
   }
 
   // Check for WooCommerce sniffs
   if (!await hasWooCommerceSniffs()) {
-    logger.warn('WooCommerce sniffs not installed');
+    logger.error('WooCommerce sniffs not installed');
     console.log();
-
-    if (await hasComposer()) {
-      const { install } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'install',
-          message: 'Install woocommerce/woocommerce-sniffs now?',
-          default: true
-        }
-      ]);
-
-      if (install) {
-        const success = await installSniffs();
-        if (!success) {
-          process.exit(1);
-        }
-        console.log();
-      } else {
-        process.exit(1);
-      }
-    } else {
-      logger.info('Install manually:');
-      console.log(chalk.gray('  composer require --dev woocommerce/woocommerce-sniffs'));
-      process.exit(1);
-    }
+    logger.info('Install globally via composer:');
+    console.log(chalk.gray('  composer global require woocommerce/woocommerce-sniffs'));
+    console.log();
+    process.exit(1);
   }
 
-  // Check for phpcs.xml config
-  const hasConfig = await fileExists(join(process.cwd(), 'phpcs.xml')) ||
-                    await fileExists(join(process.cwd(), 'phpcs.xml.dist'));
+  // Handle --fix option
+  if (options.fix) {
+    const phpcbf = await getPhpcbfBinary();
+    if (!phpcbf) {
+      logger.error('PHPCBF not found');
+      process.exit(1);
+    }
+    return await runPhpcbf(phpcbf, options);
+  }
 
-  if (!hasConfig && !options.noConfig) {
-    logger.warn('No phpcs.xml found');
-    console.log();
+  // Determine which standard/ruleset to use
+  let standard = null;
 
-    const { generate } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'generate',
-        message: 'Generate a phpcs.xml config file?',
-        default: true
-      }
-    ]);
-
-    if (generate) {
-      await generatePhpcsConfig(config);
-      console.log();
+  if (options.full) {
+    // Use full WooCommerce-Core standard
+    standard = 'WooCommerce-Core';
+    console.log(chalk.gray('Using: WooCommerce-Core (full standards)\n'));
+  } else {
+    // Use security ruleset by default
+    const securityRuleset = await getSecurityRuleset();
+    if (securityRuleset) {
+      standard = securityRuleset;
+      console.log(chalk.gray('Using: Security ruleset (escaping, sanitization, SQL)\n'));
+    } else {
+      // Fallback to WooCommerce-Core if no security ruleset
+      standard = 'WooCommerce-Core';
+      console.log(chalk.gray('Using: WooCommerce-Core (security ruleset not found)\n'));
     }
   }
 
   // Build phpcs arguments
   const args = [];
 
-  // If no config file, use WooCommerce-Core standard
-  if (!hasConfig && !await fileExists(join(process.cwd(), 'phpcs.xml'))) {
-    args.push('--standard=WooCommerce-Core');
-  }
-
-  // Add common options
-  if (options.fix) {
-    // Use phpcbf for fixing
-    const phpcbf = phpcs.replace('phpcs', 'phpcbf');
-    return await runPhpcbf(phpcbf, options);
-  }
-
-  // Report format
+  args.push(`--standard=${standard}`);
   args.push('--report=full');
-
-  // Colors
   args.push('--colors');
+  args.push('--extensions=php');
 
   // Show only errors (not warnings) if specified
   if (options.errorsOnly) {
@@ -239,15 +223,12 @@ export async function phpcsCommand(options) {
   const target = options.path || '.';
   args.push(target);
 
-  // Extensions to check
-  args.push('--extensions=php');
-
-  // Exclusions if no config file
-  if (!hasConfig && !await fileExists(join(process.cwd(), 'phpcs.xml'))) {
-    args.push('--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*');
+  // Add exclusions (security ruleset has them built in, but add for CLI paths)
+  if (options.path) {
+    // No exclusions for specific path
+  } else {
+    args.push('--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*,assets/*');
   }
-
-  console.log(chalk.gray(`Running: ${phpcs} ${args.join(' ')}\n`));
 
   try {
     const result = await execa(phpcs, args, {
@@ -259,16 +240,12 @@ export async function phpcsCommand(options) {
     console.log();
 
     if (result.exitCode === 0) {
-      logger.success('No coding standards violations found!');
+      logger.success('No security issues found!');
       return { success: true, exitCode: 0 };
-    } else if (result.exitCode === 1) {
-      logger.error('Coding standards violations found');
+    } else if (result.exitCode === 1 || result.exitCode === 2) {
+      logger.error('Security issues found');
       logger.info('Run with --fix to auto-fix some issues');
-      return { success: false, exitCode: 1 };
-    } else if (result.exitCode === 2) {
-      logger.error('Fixable coding standards violations found');
-      logger.info('Run with --fix to auto-fix these issues');
-      return { success: false, exitCode: 2 };
+      return { success: false, exitCode: result.exitCode };
     } else {
       logger.error(`PHPCS exited with code ${result.exitCode}`);
       return { success: false, exitCode: result.exitCode };
@@ -285,18 +262,24 @@ export async function phpcsCommand(options) {
 async function runPhpcbf(phpcbf, options) {
   console.log(chalk.yellow('Running PHPCBF to auto-fix issues...\n'));
 
+  // Determine which standard to use
+  let standard;
+  if (options.full) {
+    standard = 'WooCommerce-Core';
+  } else {
+    const securityRuleset = await getSecurityRuleset();
+    standard = securityRuleset || 'WooCommerce-Core';
+  }
+
   const args = [];
-  const target = options.path || '.';
-  args.push(target);
+  args.push(`--standard=${standard}`);
   args.push('--extensions=php');
 
-  // Check if config exists
-  const hasConfig = await fileExists(join(process.cwd(), 'phpcs.xml')) ||
-                    await fileExists(join(process.cwd(), 'phpcs.xml.dist'));
+  const target = options.path || '.';
+  args.push(target);
 
-  if (!hasConfig) {
-    args.push('--standard=WooCommerce-Core');
-    args.push('--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*');
+  if (!options.path) {
+    args.push('--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*,assets/*');
   }
 
   try {
@@ -312,7 +295,7 @@ async function runPhpcbf(phpcbf, options) {
       logger.success('No fixable issues found');
       return { success: true, exitCode: 0 };
     } else if (result.exitCode === 1) {
-      logger.success('Fixed some coding standards issues');
+      logger.success('Fixed some issues');
       logger.info('Review the changes and run phpcs again');
       return { success: true, exitCode: 1 };
     } else if (result.exitCode === 2) {
@@ -337,7 +320,7 @@ export async function runPhpcsCheck(options = {}) {
 
   if (!phpcs) {
     if (options.skipIfMissing) {
-      logger.warn('PHPCS not available, skipping code standards check');
+      logger.warn('PHPCS not available, skipping security check');
       return true;
     }
     return false;
@@ -345,23 +328,23 @@ export async function runPhpcsCheck(options = {}) {
 
   if (!await hasWooCommerceSniffs()) {
     if (options.skipIfMissing) {
-      logger.warn('WooCommerce sniffs not installed, skipping code standards check');
+      logger.warn('WooCommerce sniffs not installed, skipping security check');
       return true;
     }
     return false;
   }
 
-  const args = ['--report=summary', '--extensions=php'];
+  // Use security ruleset by default
+  const securityRuleset = await getSecurityRuleset();
+  const standard = securityRuleset || 'WooCommerce-Core';
 
-  const hasConfig = await fileExists(join(process.cwd(), 'phpcs.xml')) ||
-                    await fileExists(join(process.cwd(), 'phpcs.xml.dist'));
-
-  if (!hasConfig) {
-    args.push('--standard=WooCommerce-Core');
-    args.push('--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*');
-  }
-
-  args.push('.');
+  const args = [
+    `--standard=${standard}`,
+    '--report=summary',
+    '--extensions=php',
+    '--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*,assets/*',
+    '.'
+  ];
 
   try {
     const result = await execa(phpcs, args, {
