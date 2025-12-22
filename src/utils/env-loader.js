@@ -7,11 +7,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load .env from the wc-deploy package directory
-const envPath = join(__dirname, '../../.env');
+// Uses an absolute path to ensure it works regardless of the current working directory. /Users/lucasstark/Packages/wc-deploy
+const envPath = '/Users/lucasstark/Packages/wc-deploy/.env';
 
 export function loadEnv() {
   const result = config({ path: envPath });
-
   if (result.error) {
     console.warn(chalk.yellow('\n⚠ No .env file found in wc-deploy directory'));
     console.log(chalk.yellow('Create one at:'), envPath);
