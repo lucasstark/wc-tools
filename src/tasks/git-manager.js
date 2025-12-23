@@ -14,6 +14,30 @@ export async function checkGitStatus() {
 }
 
 /**
+ * Commit changes only (no tag, no push)
+ * Used by deploy command - tagging happens after deployment succeeds
+ */
+export async function gitCommitOnly(version, message, dryRun = false) {
+  if (dryRun) {
+    logger.info(`Would commit with message: "Release version ${version}"`);
+    return;
+  }
+
+  try {
+    // Add all changes
+    await execa('git', ['add', '-A']);
+
+    // Commit
+    const commitMessage = `Release version ${version}\n\n${message}`;
+    await execa('git', ['commit', '-m', commitMessage]);
+
+    logger.success('Created git commit (tag pending deployment)');
+  } catch (error) {
+    throw new Error(`Git commit failed: ${error.message}`);
+  }
+}
+
+/**
  * Commit changes and create tag
  */
 export async function gitCommitAndTag(version, message, dryRun = false) {

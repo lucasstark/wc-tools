@@ -1,4 +1,4 @@
-# WC Deploy
+# ES CLI (Element Stark CLI)
 
 A CLI tool for building and deploying WooCommerce extensions. Replaces the need for grunt in individual plugins with a single global tool that handles:
 
@@ -6,8 +6,11 @@ A CLI tool for building and deploying WooCommerce extensions. Replaces the need 
 - POT file generation (i18n)
 - Distribution zip creation
 - Version management
+- PHPCS security checks
+- QIT testing
 - Git tagging
 - WooCommerce.com deployment
+- Background deployment monitoring
 
 ## Installation
 
@@ -17,7 +20,7 @@ npm install
 npm link
 ```
 
-Now `wc-deploy` command is available globally.
+Now `es` command is available globally (also aliased as `wc-deploy`).
 
 ## Quick Start
 
@@ -26,24 +29,43 @@ Now `wc-deploy` command is available globally.
 cd /path/to/your/woocommerce-extension
 
 # Initialize configuration
-wc-deploy init
+es init
 
 # Build distribution package
-wc-deploy build
+es build
+
+# Run security checks
+es phpcs
 
 # Full deployment
-wc-deploy deploy
+es deploy
 ```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `es init` | Initialize `.deployrc.json` configuration |
+| `es build` | Build distribution package (CSS minify, POT, zip) |
+| `es pot` | Generate POT file for translations |
+| `es phpcs` | Run PHP CodeSniffer security check |
+| `es qit [type]` | Run QIT tests (builds first, then runs tests) |
+| `es qit version` | Check deployed version on WooCommerce.com |
+| `es sync` | Quick compatibility update (bump WP/WC versions) |
+| `es version [ver]` | Update version numbers interactively |
+| `es deploy` | Full deployment workflow with background monitoring |
+| `es status` | Check WooCommerce.com deployment status |
 
 ## Setup
 
 ### 1. Configure WooCommerce.com Credentials
 
-Create a `.env` file in `~/Packages/wc-deploy/`:
+Create `~/.wccom-deploy`:
 
 ```bash
-WC_USERNAME=your_woocommerce_username
-WC_APP_PASSWORD=your_application_password
+WCCOM_USER=your_woocommerce_username
+WCCOM_PASSWORD=your_application_password
+WCCOM_API_URL=https://woocommerce.com/wp-json/wc/submission/runner/v1
 ```
 
 **To get an application password:**
@@ -53,7 +75,7 @@ WC_APP_PASSWORD=your_application_password
 
 ### 2. Configure Each Extension
 
-Run `wc-deploy init` in your plugin directory, or create `.deployrc.json` manually:
+Run `es init` in your plugin directory, or create `.deployrc.json` manually:
 
 ```json
 {
@@ -76,78 +98,123 @@ Run `wc-deploy init` in your plugin directory, or create `.deployrc.json` manual
 }
 ```
 
-## Commands
+### 3. Install PHPCS (Recommended)
 
-### `wc-deploy init`
-
-Initialize a new `.deployrc.json` configuration file interactively.
+Install WooCommerce sniffs globally:
 
 ```bash
-wc-deploy init
-wc-deploy init --force  # Overwrite existing config
+composer global require woocommerce/woocommerce-sniffs
 ```
 
-### `wc-deploy build`
+A security-focused ruleset is at `~/.composer/phpcs-security.xml`.
 
-Build the distribution package. This runs:
-1. Version consistency check
+## Command Details
+
+### `es build`
+
+Build the distribution package:
+1. Cleans dist directory
 2. CSS minification (creates `.min.css` files)
-3. POT file generation (requires WP-CLI)
+3. POT file generation
 4. Distribution zip creation
 
 ```bash
-wc-deploy build
-wc-deploy build --dry-run              # Preview without changes
-wc-deploy build --skip-version-check   # Skip version check
-wc-deploy build --force                # Continue despite version mismatch
+es build
+es build --dry-run              # Preview without changes
+es build --skip-version-check   # Skip version check
+es build --force                # Continue despite version mismatch
 ```
 
-### `wc-deploy pot`
+### `es phpcs`
 
-Generate POT file for translations (standalone command).
+Run PHP CodeSniffer with security-focused rules:
 
 ```bash
-wc-deploy pot
-wc-deploy pot --dry-run
+es phpcs                    # Security checks only (escaping, sanitization, SQL)
+es phpcs --full             # Full WooCommerce-Core standards
+es phpcs --fix              # Auto-fix with PHPCBF
+es phpcs --errors-only      # Show only errors, not warnings
+es phpcs --path src/        # Scan specific path
 ```
 
-Requires [WP-CLI](https://wp-cli.org/) to be installed.
+### `es qit [testType]`
 
-### `wc-deploy version <newVersion>`
-
-Update version numbers in all configured files.
+Run QIT (Quality Insights Toolkit) tests. **Automatically builds first** to ensure you're testing the latest code.
 
 ```bash
-wc-deploy version 2.4.0
-wc-deploy version 2.4.0 --dry-run
+es qit                      # Default: security test
+es qit security             # Security test
+es qit activation           # Activation test
+es qit all                  # Security + activation
+es qit version              # Check deployed version on WooCommerce.com
+es qit --skip-build         # Skip build, use existing zip
+es qit --verbose            # Show full test output
 ```
 
-### `wc-deploy deploy`
+### `es sync`
 
-Full deployment workflow:
-1. Prompt for new version number
-2. Prompt for changelog entry
-3. Update version in all configured files
-4. Update changelog.txt
-5. Build distribution package
-6. Create git commit and tag
-7. Deploy to WooCommerce.com
+Quick compatibility update for WP/WC version bumps:
+
+1. Checks repo is clean
+2. Runs PHPCS check
+3. Fetches latest WP/WC versions
+4. Updates "Tested up to" headers
+5. Bumps patch version
+6. Builds and deploys
+7. Commits, tags, pushes
 
 ```bash
-wc-deploy deploy
-wc-deploy deploy --version 2.4.0       # Specify version directly
-wc-deploy deploy --dry-run             # Preview without changes
-wc-deploy deploy --skip-build          # Skip build step
-wc-deploy deploy --skip-tests          # Skip QIT tests
-wc-deploy deploy --skip-deploy         # Skip WooCommerce.com deployment
+es sync                     # Full sync
+es sync --dry-run           # Preview changes
+es sync --skip-phpcs        # Skip PHPCS check
 ```
 
-### `wc-deploy status`
+### `es deploy`
 
-Check the status of a WooCommerce.com deployment.
+Full deployment workflow with background monitoring:
+
+1. Checks WP/WC compatibility (offers to update)
+2. Runs PHPCS security check
+3. Prompts for version and changelog
+4. Updates version files and changelog
+5. Builds distribution package
+6. **Commits locally (no tag yet)**
+7. Uploads to WooCommerce.com
+8. **Spawns background monitor**
+
+The background monitor:
+- Polls deployment status every 30 seconds (up to 30 min)
+- On success: creates git tag, pushes commit + tags, macOS notification
+- On failure: notification with error, leaves commit unpushed
+
+This ensures git tags only exist for successfully deployed versions.
 
 ```bash
-wc-deploy status
+es deploy
+es deploy --version 2.4.0   # Specify version directly
+es deploy --dry-run         # Preview without changes
+es deploy --skip-build      # Skip build step
+es deploy --skip-phpcs      # Skip PHPCS check
+es deploy --skip-deploy     # Skip WooCommerce.com upload
+```
+
+**If deployment fails:**
+```bash
+# Fix the issue, then:
+git commit --amend          # Update your commit
+es build                    # Rebuild
+es deploy --skip-build      # Retry deployment
+```
+
+### `es version [newVersion]`
+
+Update version numbers interactively or directly:
+
+```bash
+es version                  # Interactive prompt
+es version 2.4.0            # Direct version
+es version 2.4.0 --dry-run  # Preview changes
+es version -m "Fixed bug"   # Add changelog entry
 ```
 
 ## Configuration Options
@@ -177,43 +244,12 @@ The following are always excluded from the distribution zip:
 - `.phpcs.xml`, `phpcs.xml`, `.eslintrc`
 - `README.md`, `.DS_Store`
 
-## Migrating from Grunt
-
-To migrate an existing plugin from grunt to wc-deploy:
-
-1. **Navigate to your plugin directory:**
-   ```bash
-   cd /path/to/your-plugin
-   ```
-
-2. **Initialize wc-deploy:**
-   ```bash
-   wc-deploy init
-   ```
-
-3. **Test the build:**
-   ```bash
-   wc-deploy build --dry-run
-   ```
-
-4. **Once confirmed, you can remove grunt:**
-   - Delete `Gruntfile.js`
-   - Delete `grunt/` directory
-   - Remove grunt dependencies from `package.json`
-
-5. **Update your npm scripts** (optional):
-   ```json
-   {
-     "scripts": {
-       "build": "wc-deploy build"
-     }
-   }
-   ```
-
 ## Requirements
 
 - Node.js 18+
 - [WP-CLI](https://wp-cli.org/) (for POT file generation)
+- PHPCS with WooCommerce sniffs (for `es phpcs`)
+- QIT CLI (for `es qit`)
 
 ## License
 

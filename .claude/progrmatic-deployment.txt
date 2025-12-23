@@ -1,0 +1,42 @@
+Deploying your product
+Make a POST request to deploy your product using the following command:
+
+curl -X POST https://woocommerce.com/wp-json/wc/submission/runner/v1/product/deploy \
+  -F "file=@/path/to/zip" \
+  -F "product_id=<product_id>" \
+  -F "username=<username>" \
+  -F "password=<app_password>" \
+  -F "version=<product_version>"
+Replace <product_id>, <username>, <app_password>, and <product_version> with your actual product ID, username, application password, and product version, respectively.
+
+Checking deployment status
+To check the status of your deployment, use the following command:
+
+curl -X POST https://woocommerce.com/wp-json/wc/submission/runner/v1/product/deploy/status \
+  -F "product_id=<product_id>" \
+  -F "username=<username>" \
+  -F "password=<app_password>"
+Status response
+When you query the deployment status, the response will provide details about the progress, including the status of various test runs.
+
+Below is an example of this response:
+
+{
+  "status": "queued",
+  "version": "1.0.0",
+  "test_runs": {
+    "12345": {
+      "test_run_id": "12345",
+      "status": "success",
+      "test_type": "activation",
+      "result_url": "https://qit.woo.com/?qit_results=12345"
+    },
+    "67890": {
+      "test_run_id": "67890",
+      "status": "success",
+      "test_type": "api",
+      "result_url": "https://qit.woo.com/?qit_results=67890"
+    }
+    ...
+  }
+}

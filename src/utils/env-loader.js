@@ -11,7 +11,12 @@ const __dirname = dirname(__filename);
 const envPath = '/Users/lucasstark/Packages/wc-deploy/.env';
 
 export function loadEnv() {
-  const result = config({ path: envPath });
+  // Suppress dotenv debug output
+  const originalDebug = process.env.DEBUG;
+  process.env.DOTENV_CONFIG_DEBUG = 'false';
+
+  const result = config({ path: envPath, debug: false });
+
   if (result.error) {
     console.warn(chalk.yellow('\n⚠ No .env file found in wc-deploy directory'));
     console.log(chalk.yellow('Create one at:'), envPath);

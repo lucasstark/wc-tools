@@ -1,5 +1,9 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 
+// Suppress dotenv v17 debug output
+process.env.DOTENV_CONFIG_DEBUG = 'false';
+process.env.DOTENV_CONFIG_SILENT = 'true';
+
 import { program } from 'commander';
 import chalk from 'chalk';
 import { deployCommand } from '../src/commands/deploy.js';
@@ -11,10 +15,13 @@ import { potCommand } from '../src/commands/pot.js';
 import { qitCommand, qitVersionCommand } from '../src/commands/qit.js';
 import { syncCommand } from '../src/commands/sync.js';
 import { phpcsCommand } from '../src/commands/phpcs.js';
+import { updateAllCommand } from '../src/commands/update-all.js';
+import { securityCommand } from '../src/commands/security.js';
+import { monitorCommand } from '../src/commands/monitor.js';
 
 program
-  .name('es')
-  .description('Element Stark CLI - Build and deploy WooCommerce extensions')
+  .name('wcm')
+  .description('WooCommerce Marketplace CLI - Build and deploy WooCommerce extensions')
   .version('1.0.0');
 
 // Init command
@@ -51,10 +58,19 @@ program
   .option('--path <path>', 'Specific file or directory to scan')
   .action(phpcsCommand);
 
+// Security command (PHPCS + QIT security)
+program
+  .command('security')
+  .description('Run local PHPCS security check, then QIT remote security scan')
+  .option('--skip-build', 'Skip build step before QIT test')
+  .option('--verbose', 'Show detailed output')
+  .action(securityCommand);
+
 // QIT command
 program
   .command('qit [testType]')
   .description('Run QIT tests or check deployed version. Use "qit version" to check WooCommerce.com, or test types: security, activation, api, e2e, phpstan, all')
+  .option('--skip-build', 'Skip build step before running tests')
   .option('--no-wait', 'Do not wait for test results')
   .option('--verbose', 'Show full test output (or show recent changelog for version)')
   .option('--continue-on-error', 'Continue running tests even if one fails')
@@ -74,6 +90,15 @@ program
   .option('--dry-run', 'Preview changes without executing')
   .option('--skip-phpcs', 'Skip PHPCS coding standards check')
   .action(syncCommand);
+
+// Update-all command
+program
+  .command('update-all [paths...]')
+  .description('Update WP/WC compatibility for multiple extensions with dashboard monitoring')
+  .option('--config <path>', 'Path to extensions config file (default: ~/.es-extensions.json)')
+  .option('--dry-run', 'Preview changes without executing')
+  .option('--skip-phpcs', 'Skip PHPCS coding standards check')
+  .action((paths, options) => updateAllCommand({ ...options, paths }));
 
 // Version command
 program
@@ -102,19 +127,30 @@ program
   .description('Check WooCommerce.com deployment status')
   .action(statusCommand);
 
+// Monitor command
+program
+  .command('monitor [paths...]')
+  .description('Watch deployment status with live updates, notifications, and speech')
+  .option('--all', 'Monitor all extensions from config file')
+  .option('--config <path>', 'Path to extensions config file (default: ~/.es-extensions.json)')
+  .action(monitorCommand);
+
 // Handle unknown commands
 program.on('command:*', function () {
   console.error(chalk.red(`\nInvalid command: ${program.args.join(' ')}`));
   console.log(chalk.yellow('\nAvailable commands:'));
-  console.log(chalk.cyan('  init     ') + chalk.gray('Initialize .deployrc.json'));
-  console.log(chalk.cyan('  build    ') + chalk.gray('Build distribution package'));
-  console.log(chalk.cyan('  pot      ') + chalk.gray('Generate POT file'));
-  console.log(chalk.cyan('  phpcs    ') + chalk.gray('Run PHP CodeSniffer with WooCommerce standards'));
-  console.log(chalk.cyan('  qit      ') + chalk.gray('Run QIT tests (use "qit version" to check deployed version)'));
-  console.log(chalk.cyan('  sync     ') + chalk.gray('Quick WP/WC compatibility update'));
-  console.log(chalk.cyan('  version  ') + chalk.gray('Update version numbers'));
-  console.log(chalk.cyan('  deploy   ') + chalk.gray('Full deployment workflow'));
-  console.log(chalk.cyan('  status   ') + chalk.gray('Check deployment status'));
+  console.log(chalk.cyan('  init       ') + chalk.gray('Initialize .deployrc.json'));
+  console.log(chalk.cyan('  build      ') + chalk.gray('Build distribution package'));
+  console.log(chalk.cyan('  pot        ') + chalk.gray('Generate POT file'));
+  console.log(chalk.cyan('  phpcs      ') + chalk.gray('Run PHP CodeSniffer with WooCommerce standards'));
+  console.log(chalk.cyan('  security   ') + chalk.gray('Local PHPCS + QIT remote security scan'));
+  console.log(chalk.cyan('  qit        ') + chalk.gray('Run QIT tests (use "qit version" to check deployed version)'));
+  console.log(chalk.cyan('  sync       ') + chalk.gray('Quick WP/WC compatibility update (single extension)'));
+  console.log(chalk.cyan('  update-all ') + chalk.gray('Update compatibility for multiple extensions'));
+  console.log(chalk.cyan('  version    ') + chalk.gray('Update version numbers'));
+  console.log(chalk.cyan('  deploy     ') + chalk.gray('Full deployment workflow'));
+  console.log(chalk.cyan('  status     ') + chalk.gray('Check deployment status (one-time)'));
+  console.log(chalk.cyan('  monitor    ') + chalk.gray('Watch deployment with live updates'));
   console.log(chalk.yellow('\nSee --help for more details.\n'));
   process.exit(1);
 });

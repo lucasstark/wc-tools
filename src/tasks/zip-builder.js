@@ -96,6 +96,7 @@ export async function buildDistributionZip(config, version, dryRun = false) {
 
   try {
     // Clean and create directories
+    logger.info('Cleaning dist directory...');
     await rm(distPath, { recursive: true, force: true });
     await mkdir(tempPath, { recursive: true });
 

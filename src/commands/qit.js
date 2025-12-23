@@ -5,6 +5,7 @@ import { join } from 'path';
 import semver from 'semver';
 import { loadConfig, getCurrentVersion } from '../utils/config-loader.js';
 import { logger } from '../utils/logger.js';
+import { runBuild } from '../tasks/builder.js';
 
 const AVAILABLE_TESTS = ['security', 'activation', 'api', 'e2e', 'phpstan', 'phpcompatibility'];
 
@@ -102,14 +103,38 @@ export async function qitCommand(testType, options) {
   const distPath = config.distPath || './dist';
   const zipPath = join(process.cwd(), distPath, `${slug}.zip`);
 
-  // Check if zip exists
+  // Build first (unless skipped)
+  if (!options.skipBuild) {
+    logger.step('Building distribution package...');
+    try {
+      await runBuild(config, false);
+      logger.success('Build complete');
+      console.log();
+    } catch (error) {
+      logger.error(`Build failed: ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  // Verify zip exists
   try {
     await access(zipPath);
   } catch (error) {
     logger.error(`Zip file not found: ${zipPath}`);
-    logger.info('Run "wc-deploy build" first to create the distribution package.');
+    logger.info('Run "es build" first to create the distribution package.');
     process.exit(1);
   }
+
+  // Validate ZIP meets QIT requirements
+  logger.step('Validating ZIP file...');
+  const validation = await validateZip(zipPath);
+  if (!validation.valid) {
+    logger.error('ZIP validation failed:');
+    console.log(chalk.red(validation.output));
+    process.exit(1);
+  }
+  logger.success('ZIP validation passed');
+  console.log();
 
   // Determine which tests to run
   let testsToRun = [];
@@ -154,28 +179,53 @@ export async function qitCommand(testType, options) {
 }
 
 /**
+ * Validate ZIP file meets QIT requirements
+ */
+async function validateZip(zipPath) {
+  try {
+    const result = await execa('qit', ['woo:validate-zip', zipPath], {
+      stdio: 'pipe'
+    });
+    return { valid: true, output: result.stdout };
+  } catch (error) {
+    return { valid: false, output: error.stdout || error.stderr || error.message };
+  }
+}
+
+/**
  * Run a single QIT test
  */
 async function runQitTest(testType, slug, zipPath, options) {
+  // Ensure absolute path for zip
+  const absoluteZipPath = zipPath.startsWith('/') ? zipPath : join(process.cwd(), zipPath);
+
+  // Build args with options BEFORE the slug (some QIT commands treat post-slug args as passthrough)
+  const args = [
+    `run:${testType}`,
+    '--zip',
+    absoluteZipPath
+  ];
+
+  // Add --wait unless --no-wait is specified
+  if (!options.noWait) {
+    args.push('--wait');
+  }
+
+  // Add optional flags
+  if (options.ignore) {
+    args.push('--ignore-plugin-dependencies', options.ignore);
+  }
+
+  // Slug goes last (before any -- passthrough args)
+  args.push(slug);
+
+  // Log the full command for debugging
+  const fullCommand = `qit ${args.join(' ')}`;
+  console.log(chalk.gray(`\n  Command: ${fullCommand}\n`));
+
   const spinner = logger.spinner(`Running ${testType} test...`);
 
   try {
-    const args = [
-      `run:${testType}`,
-      slug,
-      `--zip=${zipPath}`
-    ];
-
-    // Add --wait unless --no-wait is specified
-    if (!options.noWait) {
-      args.push('--wait');
-    }
-
-    // Add optional flags
-    if (options.ignore) {
-      args.push(`--ignore-plugin-dependencies=${options.ignore}`);
-    }
-
     const result = await execa('qit', args, {
       stdio: options.verbose ? 'inherit' : 'pipe',
       cwd: process.cwd()
