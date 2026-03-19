@@ -13,11 +13,10 @@ import { statusCommand } from '../src/commands/status.js';
 import { initCommand } from '../src/commands/init.js';
 import { potCommand } from '../src/commands/pot.js';
 import { qitCommand, qitVersionCommand } from '../src/commands/qit.js';
-import { syncCommand } from '../src/commands/sync.js';
 import { phpcsCommand } from '../src/commands/phpcs.js';
-import { updateAllCommand } from '../src/commands/update-all.js';
 import { securityCommand } from '../src/commands/security.js';
-import { monitorCommand } from '../src/commands/monitor.js';
+import { checkCommand } from '../src/commands/check.js';
+import { e2eCommand, e2eListCommand } from '../src/commands/e2e.js';
 
 program
   .name('wcm')
@@ -83,22 +82,26 @@ program
     return qitCommand(testType, options);
   });
 
-// Sync command
+// Check command
 program
-  .command('sync')
-  .description('Quick compatibility update - check WP/WC versions, bump patch, build, deploy, commit, push')
-  .option('--dry-run', 'Preview changes without executing')
-  .option('--skip-phpcs', 'Skip PHPCS coding standards check')
-  .action(syncCommand);
+  .command('check')
+  .description('Fetch and display latest WordPress and WooCommerce versions')
+  .action(checkCommand);
 
-// Update-all command
+// E2E command
 program
-  .command('update-all [paths...]')
-  .description('Update WP/WC compatibility for multiple extensions with dashboard monitoring')
-  .option('--config <path>', 'Path to extensions config file (default: ~/.es-extensions.json)')
-  .option('--dry-run', 'Preview changes without executing')
-  .option('--skip-phpcs', 'Skip PHPCS coding standards check')
-  .action((paths, options) => updateAllCommand({ ...options, paths }));
+  .command('e2e [subcommand]')
+  .description('Run E2E tests using QIT test packages (activation, ciab, performance)')
+  .option('--package <name>', 'Test package: activation, ciab, performance', 'activation')
+  .option('--skip-build', 'Skip building zip before testing')
+  .option('--ui', 'Run tests with visible browser')
+  .option('--debug', 'Enable debug mode')
+  .action((subcommand, options) => {
+    if (subcommand === 'list') {
+      return e2eListCommand();
+    }
+    return e2eCommand(options);
+  });
 
 // Version command
 program
@@ -127,14 +130,6 @@ program
   .description('Check WooCommerce.com deployment status')
   .action(statusCommand);
 
-// Monitor command
-program
-  .command('monitor [paths...]')
-  .description('Watch deployment status with live updates, notifications, and speech')
-  .option('--all', 'Monitor all extensions from config file')
-  .option('--config <path>', 'Path to extensions config file (default: ~/.es-extensions.json)')
-  .action(monitorCommand);
-
 // Handle unknown commands
 program.on('command:*', function () {
   console.error(chalk.red(`\nInvalid command: ${program.args.join(' ')}`));
@@ -145,12 +140,11 @@ program.on('command:*', function () {
   console.log(chalk.cyan('  phpcs      ') + chalk.gray('Run PHP CodeSniffer with WooCommerce standards'));
   console.log(chalk.cyan('  security   ') + chalk.gray('Local PHPCS + QIT remote security scan'));
   console.log(chalk.cyan('  qit        ') + chalk.gray('Run QIT tests (use "qit version" to check deployed version)'));
-  console.log(chalk.cyan('  sync       ') + chalk.gray('Quick WP/WC compatibility update (single extension)'));
-  console.log(chalk.cyan('  update-all ') + chalk.gray('Update compatibility for multiple extensions'));
+  console.log(chalk.cyan('  check      ') + chalk.gray('Fetch latest WordPress and WooCommerce versions'));
+  console.log(chalk.cyan('  e2e        ') + chalk.gray('Run E2E tests (use "e2e list" to see packages)'));
   console.log(chalk.cyan('  version    ') + chalk.gray('Update version numbers'));
   console.log(chalk.cyan('  deploy     ') + chalk.gray('Full deployment workflow'));
   console.log(chalk.cyan('  status     ') + chalk.gray('Check deployment status (one-time)'));
-  console.log(chalk.cyan('  monitor    ') + chalk.gray('Watch deployment with live updates'));
   console.log(chalk.yellow('\nSee --help for more details.\n'));
   process.exit(1);
 });
