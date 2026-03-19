@@ -18,6 +18,8 @@ import { phpcsCommand } from '../src/commands/phpcs.js';
 import { updateAllCommand } from '../src/commands/update-all.js';
 import { securityCommand } from '../src/commands/security.js';
 import { monitorCommand } from '../src/commands/monitor.js';
+import { e2eCommand, e2eListCommand } from '../src/commands/e2e.js';
+import { checkCommand } from '../src/commands/check.js';
 
 program
   .name('wcm')
@@ -30,6 +32,12 @@ program
   .description('Initialize a new .deployrc.json configuration file')
   .option('-f, --force', 'Overwrite existing config without prompting')
   .action(initCommand);
+
+// Check command
+program
+  .command('check')
+  .description('Check latest WordPress and WooCommerce versions')
+  .action(checkCommand);
 
 // Build command
 program
@@ -52,6 +60,7 @@ program
 program
   .command('phpcs')
   .description('Run PHP CodeSniffer security check (escaping, sanitization, SQL)')
+  .option('--info', 'Show PHPCS configuration paths')
   .option('--fix', 'Auto-fix issues using PHPCBF')
   .option('--full', 'Use full WooCommerce-Core standards instead of security-only')
   .option('--errors-only', 'Show only errors, not warnings')
@@ -62,6 +71,7 @@ program
 program
   .command('security')
   .description('Run local PHPCS security check, then QIT remote security scan')
+  .option('--remote', 'Skip local PHPCS, only run remote QIT security')
   .option('--skip-build', 'Skip build step before QIT test')
   .option('--verbose', 'Show detailed output')
   .action(securityCommand);
@@ -106,6 +116,7 @@ program
   .description('Update version numbers. Interactive prompt if no version specified.')
   .option('--dry-run', 'Simulate without making changes')
   .option('-f, --force', 'Skip sanity checks and prompts')
+  .option('--no-git', 'Skip all git operations (no commit, no tag, no uncommitted change checks)')
   .option('-m, --message <entry>', 'Changelog entry (can be used multiple times)', (val, acc) => { acc.push(val); return acc; }, [])
   .action(versionCommand);
 
@@ -129,17 +140,32 @@ program
 
 // Monitor command
 program
-  .command('monitor [paths...]')
-  .description('Watch deployment status with live updates, notifications, and speech')
-  .option('--all', 'Monitor all extensions from config file')
+  .command('monitor')
+  .description('Watch deployment status for all extensions with live dashboard')
   .option('--config <path>', 'Path to extensions config file (default: ~/.es-extensions.json)')
   .action(monitorCommand);
+
+// E2E command
+program
+  .command('e2e [action]')
+  .description('Run E2E tests using QIT test packages (activation, ciab, performance)')
+  .option('--package <name>', 'Test package to run (activation, ciab, performance)', 'activation')
+  .option('--skip-build', 'Skip building the zip before testing')
+  .option('--ui', 'Run tests with visible browser')
+  .option('--debug', 'Enable debug mode')
+  .action((action, options) => {
+    if (action === 'list') {
+      return e2eListCommand();
+    }
+    return e2eCommand(options);
+  });
 
 // Handle unknown commands
 program.on('command:*', function () {
   console.error(chalk.red(`\nInvalid command: ${program.args.join(' ')}`));
   console.log(chalk.yellow('\nAvailable commands:'));
   console.log(chalk.cyan('  init       ') + chalk.gray('Initialize .deployrc.json'));
+  console.log(chalk.cyan('  check      ') + chalk.gray('Check latest WP/WC versions'));
   console.log(chalk.cyan('  build      ') + chalk.gray('Build distribution package'));
   console.log(chalk.cyan('  pot        ') + chalk.gray('Generate POT file'));
   console.log(chalk.cyan('  phpcs      ') + chalk.gray('Run PHP CodeSniffer with WooCommerce standards'));
@@ -151,6 +177,7 @@ program.on('command:*', function () {
   console.log(chalk.cyan('  deploy     ') + chalk.gray('Full deployment workflow'));
   console.log(chalk.cyan('  status     ') + chalk.gray('Check deployment status (one-time)'));
   console.log(chalk.cyan('  monitor    ') + chalk.gray('Watch deployment with live updates'));
+  console.log(chalk.cyan('  e2e        ') + chalk.gray('Run E2E tests (activation, ciab, performance)'));
   console.log(chalk.yellow('\nSee --help for more details.\n'));
   process.exit(1);
 });

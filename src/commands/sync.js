@@ -45,16 +45,20 @@ export async function syncCommand(options) {
 
   // Step 1b: Run PHPCS check (unless skipped)
   if (!options.skipPhpcs) {
-    logger.step('Running PHPCS coding standards check...');
-    const phpcsResult = await runPhpcsCheck({ skipIfMissing: true });
+    logger.step('Running PHPCS security check (errors only)...');
+    const phpcsResult = await runPhpcsCheck({
+      skipIfMissing: true,
+      errorsOnly: true,
+      interactive: true
+    });
 
     if (!phpcsResult) {
-      logger.error('PHPCS check failed - fix coding standards violations before syncing');
-      logger.info('Run "wc-deploy phpcs" to see details, or "wc-deploy phpcs --fix" to auto-fix');
+      logger.error('PHPCS check failed - fix security issues before syncing');
+      logger.info('Run "wcm phpcs" to see details, or "wcm phpcs --fix" to auto-fix');
       logger.info('Or use --skip-phpcs to bypass this check');
       process.exit(1);
     }
-    logger.success('PHPCS check passed');
+    logger.success('PHPCS security check passed');
     console.log();
   }
 

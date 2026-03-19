@@ -324,14 +324,17 @@ export async function updateAllCommand(options) {
   logger.success(`Status file created: ${statusFile}`);
   console.log();
 
-  // Run PHPCS on each eligible extension first
+  // Run PHPCS on each eligible extension first (errors only, no warnings)
   if (!options.skipPhpcs) {
-    logger.step('Running PHPCS checks...');
+    logger.step('Running PHPCS security checks (errors only)...');
     for (const analysis of eligible) {
       const originalCwd = process.cwd();
       process.chdir(analysis.path);
       try {
-        const result = await runPhpcsCheck({ skipIfMissing: true });
+        const result = await runPhpcsCheck({
+          skipIfMissing: true,
+          errorsOnly: true
+        });
         if (!result) {
           logger.error(`PHPCS failed for ${analysis.config.slug}`);
           logger.info('Fix issues or use --skip-phpcs to bypass');
@@ -342,7 +345,7 @@ export async function updateAllCommand(options) {
         process.chdir(originalCwd);
       }
     }
-    logger.success('All PHPCS checks passed');
+    logger.success('All PHPCS security checks passed');
     console.log();
   }
 

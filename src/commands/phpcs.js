@@ -151,6 +151,29 @@ async function generatePhpcsConfig(config) {
  * Run PHPCS command
  */
 export async function phpcsCommand(options) {
+  // Handle --info flag
+  if (options.info) {
+    console.log(chalk.bold.cyan('\n  PHPCS Configuration Info\n'));
+
+    const phpcs = await getPhpcsBinary();
+    const securityRuleset = await getSecurityRuleset();
+    const hasSniffs = await hasWooCommerceSniffs();
+
+    console.log(chalk.gray('  Paths:'));
+    console.log(`    PHPCS binary:      ${phpcs || chalk.red('Not found')}`);
+    console.log(`    Security ruleset:  ${securityRuleset || chalk.red('Not found')}`);
+    console.log(`    WC Sniffs:         ${hasSniffs ? GLOBAL_SNIFFS_PATH : chalk.red('Not found')}`);
+    console.log();
+
+    if (securityRuleset) {
+      console.log(chalk.gray('  To edit the security ruleset:'));
+      console.log(chalk.cyan(`    code ${securityRuleset}`));
+      console.log();
+    }
+
+    return;
+  }
+
   const title = options.full ? 'PHP CodeSniffer - Full WooCommerce Standards' : 'PHP CodeSniffer - Security Check';
   console.log(chalk.bold.cyan(`\n  ${title}\n`));
 
@@ -312,8 +335,13 @@ async function runPhpcbf(phpcbf, options) {
 }
 
 /**
- * Run PHPCS as part of deploy/sync (non-interactive)
- * Returns true if passed, false if failed
+ * Run PHPCS as part of deploy/sync (non-interactive by default)
+ * Returns true if passed (or user chose to continue), false if failed
+ *
+ * Options:
+ *   skipIfMissing: true to skip if PHPCS not installed
+ *   errorsOnly: true to only check for errors (ignore warnings) - default true
+ *   interactive: true to prompt user to continue on failure
  */
 export async function runPhpcsCheck(options = {}) {
   const phpcs = await getPhpcsBinary();
@@ -342,9 +370,15 @@ export async function runPhpcsCheck(options = {}) {
     `--standard=${standard}`,
     '--report=summary',
     '--extensions=php',
-    '--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*,assets/*',
-    '.'
+    '--ignore=vendor/*,node_modules/*,dist/*,.dist/*,tests/*,assets/*'
   ];
+
+  // Default to errors-only (ignore warnings)
+  if (options.errorsOnly !== false) {
+    args.push('-n');
+  }
+
+  args.push('.');
 
   try {
     const result = await execa(phpcs, args, {
@@ -359,6 +393,24 @@ export async function runPhpcsCheck(options = {}) {
       if (result.stdout) {
         console.log(result.stdout);
       }
+
+      // If interactive, ask user if they want to continue
+      if (options.interactive) {
+        const { shouldContinue } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'shouldContinue',
+            message: 'PHPCS found issues. Continue anyway?',
+            default: false
+          }
+        ]);
+
+        if (shouldContinue) {
+          logger.warn('Continuing despite PHPCS issues');
+          return true;
+        }
+      }
+
       return false;
     }
   } catch (error) {

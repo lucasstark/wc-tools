@@ -151,6 +151,20 @@ export async function versionCommand(newVersion, options) {
  * Perform sanity checks before version bump
  */
 async function performSanityChecks(config, currentVersion, options) {
+  // If --no-git is passed, skip all git-related checks
+  if (options.git === false) {
+    console.log(chalk.gray('  Skipping git checks (--no-git)\n'));
+
+    // Still check deployed version for informational purposes
+    const deployed = await getDeployedVersion(config.productId);
+    if (deployed) {
+      console.log(chalk.gray(`  Deployed version (WooCommerce.com): ${chalk.white(deployed.version)}`));
+    }
+    console.log(chalk.gray(`  Local version:  ${chalk.white(currentVersion)}`));
+    console.log();
+    return;
+  }
+
   console.log(chalk.gray('  Checking deployment status...\n'));
 
   const inGitRepo = await isGitRepo();

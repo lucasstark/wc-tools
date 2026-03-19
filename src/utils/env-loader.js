@@ -6,9 +6,8 @@ import chalk from 'chalk';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Load .env from the wc-deploy package directory
-// Uses an absolute path to ensure it works regardless of the current working directory. /Users/lucasstark/Packages/wc-deploy
-const envPath = '/Users/lucasstark/Packages/wc-deploy/.env';
+// Load .env from the wc-deploy package root (two levels up from src/utils/)
+const envPath = join(__dirname, '..', '..', '.env');
 
 export function loadEnv() {
   // Suppress dotenv debug output
@@ -35,7 +34,7 @@ export function getCredentials() {
   if (!username || !password) {
     throw new Error(
       'WooCommerce.com credentials not found. ' +
-      'Please set WC_USERNAME and WC_APP_PASSWORD in ~/.Packages/wc-deploy/.env'
+      `Please set WC_USERNAME and WC_APP_PASSWORD in ${envPath}`
     );
   }
 

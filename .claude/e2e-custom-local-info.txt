@@ -1,0 +1,22 @@
+There are available test packages. Here are the WooCommerce ones:
+
+  | Package                              | Description               |
+  |--------------------------------------|---------------------------|
+  | woocommerce/activation:latest        | Activation tests          |
+  | woocommerce/ciab:latest              | General WooCommerce tests |
+  | woocommerce/performance-tests:latest | Performance tests         |
+
+  Try running with the activation test package:
+
+  qit run:e2e woocommerce-recommendation-engine \
+    --zip=/Users/lucasstark/Sites/woocommerce/app/public/wp-content/plugins/woocommerce-recommendation-engine/dist/woocommerce-recommendation-engine.zip \
+    --test-package=woocommerce/activation:latest
+
+  Or for more comprehensive testing with ciab:
+
+  qit run:e2e woocommerce-recommendation-engine \
+    --zip=/Users/lucasstark/Sites/woocommerce/app/public/wp-content/plugins/woocommerce-recommendation-engine/dist/woocommerce-recommendation-engine.zip \
+    --test-package=woocommerce/ciab:latest
+
+  You can also check what a package contains:
+  qit package:show woocommerce/activation:latest

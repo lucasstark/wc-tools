@@ -77,6 +77,7 @@ let hasFinished = false;
  */
 function getStatusEmoji(status) {
   const emojiMap = {
+    idle: '💤',
     initializing: '⚙️ ',
     deploying: '🔄',
     queued: '⏳',
@@ -124,12 +125,13 @@ function updateDisplay() {
       return;
     }
 
-    // Sort by status priority (active first, then completed/failed)
+    // Sort by status priority (active first, then completed/failed, idle last)
     const sortedData = [...data].sort((a, b) => {
       const priority = {
-        deploying: 1, queued: 1, processing: 1,
+        deploying: 1, queued: 1, processing: 1, initializing: 1,
         success: 2, warning: 2,
-        failed: 3, error: 3, timeout: 3
+        failed: 3, error: 3, timeout: 3,
+        idle: 5
       };
       return (priority[a.status] || 4) - (priority[b.status] || 4);
     });
@@ -137,11 +139,24 @@ function updateDisplay() {
     // Prepare table data
     const headers = ['ID', 'Product', 'Status', 'Progress', 'Duration'];
     const rows = sortedData.map(d => {
-      const duration = d.startTime ? formatDuration(Date.now() - d.startTime) : 'N/A';
       const statusEmoji = getStatusEmoji(d.status);
-      const statusText = d.status.toUpperCase();
       const shortSlug = d.slug.replace('woocommerce-', '').substring(0, 38);
       const progress = d.progress || 0;
+
+      // For idle extensions, show deployed version instead of progress/duration
+      if (d.status === 'idle') {
+        const versionText = d.deployedVersion ? `v${d.deployedVersion}` : d.version;
+        return [
+          d.productId.toString(),
+          shortSlug,
+          `${statusEmoji} ${versionText}`,
+          '██████████ 100%',
+          '-'
+        ];
+      }
+
+      const duration = d.startTime ? formatDuration(Date.now() - d.startTime) : '-';
+      const statusText = d.status.toUpperCase();
 
       return [
         d.productId.toString(),
@@ -158,23 +173,26 @@ function updateDisplay() {
     const completed = data.filter(d => d.status === 'success').length;
     const failed = data.filter(d => d.status === 'failed' || d.status === 'error').length;
     const warnings = data.filter(d => d.status === 'warning').length;
+    const idle = data.filter(d => d.status === 'idle').length;
     const inProgress = data.filter(d =>
       ['deploying', 'queued', 'processing', 'initializing'].includes(d.status)
     ).length;
 
-    let statusText = `✅ ${completed} Complete`;
+    let statusText = '';
+    if (inProgress > 0) statusText += `🔄 ${inProgress} Deploying`;
+    if (completed > 0) statusText += `${statusText ? ' | ' : ''}✅ ${completed} Complete`;
     if (warnings > 0) statusText += ` | ⚠️  ${warnings} Warning`;
     if (failed > 0) statusText += ` | ❌ ${failed} Failed`;
-    if (inProgress > 0) statusText += ` | 🔄 ${inProgress} In Progress`;
+    if (idle > 0) statusText += ` | 💤 ${idle} Idle`;
     statusText += ' | Press Q to quit';
 
     statusBar.setContent(statusText);
 
     screen.render();
 
-    // Check if all deployments are finished
+    // Check if all deployments are finished (idle counts as finished)
     const allFinished = data.every(d =>
-      ['success', 'failed', 'error', 'timeout', 'warning'].includes(d.status)
+      ['success', 'failed', 'error', 'timeout', 'warning', 'idle'].includes(d.status)
     );
 
     if (allFinished && !hasFinished) {

@@ -9,26 +9,28 @@ import { qitCommand } from './qit.js';
 export async function securityCommand(options) {
   console.log(chalk.bold.cyan('\n  Security Check\n'));
 
-  // Step 1: Run local PHPCS security check
-  logger.step('Running local PHPCS security check...');
+  // Step 1: Run local PHPCS security check (unless --remote)
+  if (!options.remote) {
+    logger.step('Running local PHPCS security check...');
 
-  try {
-    const phpcsResult = await runPhpcsCheck({
-      errorsOnly: true,
-      skipIfMissing: false
-    });
+    try {
+      const phpcsResult = await runPhpcsCheck({
+        errorsOnly: true,
+        skipIfMissing: false
+      });
 
-    if (!phpcsResult) {
+      if (!phpcsResult) {
+        console.log();
+        logger.error('Local security check failed. Fix issues before running remote check.');
+        process.exit(1);
+      }
+
+      logger.success('Local PHPCS security check passed');
       console.log();
-      logger.error('Local security check failed. Fix issues before running remote check.');
+    } catch (error) {
+      logger.error(`PHPCS check failed: ${error.message}`);
       process.exit(1);
     }
-
-    logger.success('Local PHPCS security check passed');
-    console.log();
-  } catch (error) {
-    logger.error(`PHPCS check failed: ${error.message}`);
-    process.exit(1);
   }
 
   // Step 2: Run QIT security check

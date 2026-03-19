@@ -4,10 +4,10 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import semver from 'semver';
 import { loadConfig, getCurrentVersion } from '../utils/config-loader.js';
 import { logger } from '../utils/logger.js';
 import { getCredentials } from '../utils/env-loader.js';
+import { getDeployedVersion } from '../utils/deployed-version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,204 +33,221 @@ function loadExtensionsConfig(configPath) {
 }
 
 /**
- * Start monitor for a single extension
+ * Check deployment status for a product
  */
-async function startSingleMonitor(extensionPath, options = {}) {
-  const originalCwd = process.cwd();
-
+async function checkDeploymentStatus(productId, credentials) {
   try {
-    if (extensionPath) {
-      process.chdir(extensionPath);
+    const FormData = (await import('form-data')).default;
+    const fetch = (await import('node-fetch')).default;
+
+    const form = new FormData();
+    form.append('product_id', productId);
+    form.append('username', credentials.username);
+    form.append('password', credentials.password);
+
+    const response = await fetch(`${credentials.apiUrl}/product/deploy/status`, {
+      method: 'POST',
+      body: form,
+      headers: form.getHeaders()
+    });
+
+    if (!response.ok) {
+      return { status: 'idle', message: 'No active deployment' };
     }
 
-    const config = await loadConfig();
-    const version = await getCurrentVersion();
-    const credentials = getCredentials();
-
-    const monitorConfig = {
-      productId: config.productId,
-      version,
-      slug: config.slug,
-      credentials: {
-        username: credentials.username,
-        password: credentials.password,
-        apiUrl: credentials.apiUrl
-      },
-      workingDir: process.cwd(),
-      commitMessage: options.commitMessage || `Deploy version ${version}`,
-      statusFile: options.statusFile || null,
-      isBatchDeploy: options.isBatchDeploy || false,
-      batchIndex: options.batchIndex || 0,
-      batchTotal: options.batchTotal || 1
-    };
-
-    const configBase64 = Buffer.from(JSON.stringify(monitorConfig)).toString('base64');
-    const monitorPath = join(__dirname, '../monitor/deploy-monitor.js');
-
-    if (options.background) {
-      // Detached background mode
-      const child = spawn('node', [monitorPath, configBase64], {
-        detached: true,
-        stdio: 'ignore',
-        cwd: process.cwd()
-      });
-      child.unref();
-      return { pid: child.pid, slug: config.slug, version };
-    } else {
-      // Foreground mode - inherit stdio
-      const child = spawn('node', [monitorPath, configBase64], {
-        stdio: 'inherit',
-        cwd: process.cwd()
-      });
-
-      return new Promise((resolve, reject) => {
-        child.on('exit', (code) => {
-          resolve({ code, slug: config.slug, version });
-        });
-        child.on('error', (err) => {
-          reject(err);
-        });
-      });
-    }
-  } finally {
-    process.chdir(originalCwd);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return { status: 'idle', message: error.message };
   }
 }
 
 /**
- * Monitor command - watch deployment status with notifications
+ * Calculate progress from status
  */
-export async function monitorCommand(paths, options) {
-  console.log(chalk.bold.cyan('\n  Deployment Monitor\n'));
+function calculateProgress(status) {
+  if (!status.test_runs) return 0;
 
-  // Determine if we're monitoring multiple extensions or just one
-  let extensionPaths = [];
+  const testRuns = Object.values(status.test_runs);
+  if (testRuns.length === 0) return 10;
 
-  if (options.all) {
-    // Load all extensions from config
-    const configPath = options.config || DEFAULT_CONFIG_PATH;
-    const config = loadExtensionsConfig(configPath);
+  const completed = testRuns.filter(t =>
+    !['pending', 'running', 'queued'].includes(t.status)
+  ).length;
 
-    if (!config || !config.extensions || config.extensions.length === 0) {
-      logger.error('No extensions configured.');
-      logger.info(`Create ${configPath} or use --config to specify a config file`);
-      process.exit(1);
-    }
+  return Math.round((completed / testRuns.length) * 100);
+}
 
-    extensionPaths = config.extensions;
-  } else if (paths && paths.length > 0) {
-    extensionPaths = paths;
-  } else {
-    // Single extension - current directory
-    extensionPaths = [process.cwd()];
+/**
+ * Monitor command - show deployment status for all extensions
+ */
+export async function monitorCommand(options) {
+  console.log(chalk.bold.cyan('\n  WooCommerce Deployment Monitor\n'));
+
+  // Load extensions from config
+  const configPath = options.config || DEFAULT_CONFIG_PATH;
+  const config = loadExtensionsConfig(configPath);
+
+  if (!config || !config.extensions || config.extensions.length === 0) {
+    logger.error('No extensions configured.');
+    console.log();
+    logger.info(`Create ${configPath} with:`);
+    console.log(chalk.gray(`  {`));
+    console.log(chalk.gray(`    "extensions": [`));
+    console.log(chalk.gray(`      "/path/to/extension1",`));
+    console.log(chalk.gray(`      "/path/to/extension2"`));
+    console.log(chalk.gray(`    ]`));
+    console.log(chalk.gray(`  }`));
+    process.exit(1);
   }
 
-  if (extensionPaths.length === 1 && !options.all) {
-    // Single extension mode - foreground monitor
-    logger.info('Starting deployment monitor...');
-    console.log();
+  const credentials = getCredentials();
+  const extensionPaths = config.extensions;
 
+  logger.info(`Checking ${extensionPaths.length} extensions...\n`);
+
+  // Gather status for all extensions
+  const statuses = [];
+  let hasActiveDeployment = false;
+
+  for (const extPath of extensionPaths) {
     try {
-      const result = await startSingleMonitor(extensionPaths[0], {
-        background: false
+      const originalCwd = process.cwd();
+      process.chdir(extPath);
+
+      const extConfig = await loadConfig();
+      const localVersion = await getCurrentVersion();
+
+      // Check deployment status
+      const deployStatus = await checkDeploymentStatus(extConfig.productId, credentials);
+
+      // Check if there's an active deployment
+      const isActive = deployStatus.status &&
+        ['queued', 'pending', 'running', 'processing', 'deploying'].includes(deployStatus.status);
+
+      if (isActive) {
+        hasActiveDeployment = true;
+      }
+
+      // Get deployed version if not actively deploying
+      let deployedVersion = null;
+      if (!isActive) {
+        const deployed = await getDeployedVersion(extConfig.productId);
+        deployedVersion = deployed?.version || 'unknown';
+      }
+
+      statuses.push({
+        productId: extConfig.productId,
+        slug: extConfig.slug,
+        version: localVersion,
+        deployedVersion,
+        status: isActive ? deployStatus.status : 'idle',
+        progress: isActive ? calculateProgress(deployStatus) : 100,
+        testRuns: deployStatus.test_runs || null,
+        startTime: isActive ? Date.now() : null,
+        path: extPath
       });
 
-      // Monitor exited
-      process.exit(result.code || 0);
+      const statusIcon = isActive ? '🔄' : '✓';
+      const statusText = isActive ? deployStatus.status.toUpperCase() : `v${deployedVersion}`;
+      console.log(chalk.gray(`  ${statusIcon} ${extConfig.slug}: ${statusText}`));
+
+      process.chdir(originalCwd);
     } catch (error) {
-      logger.error(`Monitor failed: ${error.message}`);
-      process.exit(1);
+      console.log(chalk.red(`  ✗ ${extPath}: ${error.message}`));
     }
-  } else {
-    // Multi-extension mode - use dashboard
-    logger.info(`Monitoring ${extensionPaths.length} extensions...`);
+  }
+
+  console.log();
+
+  if (!hasActiveDeployment) {
+    logger.success('No active deployments. All extensions are idle.');
     console.log();
 
-    // Create status file
-    const statusFile = join(homedir(), '.es-deployment-status.json');
-
-    // Initialize status file with current versions
-    const initialStatus = [];
-
-    for (const extPath of extensionPaths) {
-      try {
-        const originalCwd = process.cwd();
-        process.chdir(extPath);
-
-        const config = await loadConfig();
-        const version = await getCurrentVersion();
-
-        initialStatus.push({
-          productId: config.productId,
-          slug: config.slug,
-          version,
-          status: 'initializing',
-          progress: 0,
-          startTime: Date.now()
-        });
-
-        process.chdir(originalCwd);
-      } catch (error) {
-        logger.warn(`Could not load ${extPath}: ${error.message}`);
-      }
+    // Show summary table
+    console.log(chalk.bold('Current Versions:'));
+    console.log(chalk.gray('─'.repeat(60)));
+    for (const s of statuses) {
+      const name = s.slug.replace('woocommerce-', '').substring(0, 35).padEnd(35);
+      console.log(`  ${name} ${chalk.cyan(s.deployedVersion || s.version)}`);
     }
+    console.log(chalk.gray('─'.repeat(60)));
+    process.exit(0);
+  }
 
-    if (initialStatus.length === 0) {
-      logger.error('No valid extensions found');
-      process.exit(1);
+  // Write status file for dashboard
+  const statusFile = join(homedir(), '.es-deployment-status.json');
+  writeFileSync(statusFile, JSON.stringify(statuses, null, 2));
+
+  // Start background monitors for active deployments
+  logger.step('Starting monitors for active deployments...');
+
+  for (let i = 0; i < statuses.length; i++) {
+    const s = statuses[i];
+    if (s.status !== 'idle') {
+      const monitorConfig = {
+        productId: s.productId,
+        version: s.version,
+        slug: s.slug,
+        credentials: {
+          username: credentials.username,
+          password: credentials.password,
+          apiUrl: credentials.apiUrl
+        },
+        workingDir: s.path,
+        commitMessage: `Deploy version ${s.version}`,
+        statusFile,
+        isBatchDeploy: true,
+        batchIndex: i,
+        batchTotal: statuses.length
+      };
+
+      const configBase64 = Buffer.from(JSON.stringify(monitorConfig)).toString('base64');
+      const monitorPath = join(__dirname, '../monitor/deploy-monitor.js');
+
+      const child = spawn('node', [monitorPath, configBase64], {
+        detached: true,
+        stdio: 'ignore',
+        cwd: s.path
+      });
+      child.unref();
+
+      console.log(chalk.gray(`  ✓ Monitor started for ${s.slug} (PID: ${child.pid})`));
     }
+  }
 
-    writeFileSync(statusFile, JSON.stringify(initialStatus, null, 2));
+  console.log();
 
-    // Start monitors for each extension in background
-    for (let i = 0; i < extensionPaths.length; i++) {
-      const extPath = extensionPaths[i];
+  // Launch dashboard
+  logger.step('Launching dashboard...\n');
 
-      try {
-        const result = await startSingleMonitor(extPath, {
-          background: true,
-          statusFile,
-          isBatchDeploy: true,
-          batchIndex: i,
-          batchTotal: extensionPaths.length
-        });
+  const dashboardPath = join(__dirname, '../monitor/dashboard.js');
 
-        console.log(chalk.gray(`  ✓ Started monitor for ${result.slug} v${result.version} (PID: ${result.pid})`));
-      } catch (error) {
-        console.log(chalk.red(`  ✗ Failed to start monitor for ${extPath}: ${error.message}`));
-      }
-    }
+  const dashboard = spawn('node', [dashboardPath, statusFile], {
+    stdio: 'inherit'
+  });
 
-    console.log();
+  dashboard.on('exit', (code) => {
+    if (code === 0) {
+      console.log(chalk.green.bold('\n✨ All deployments completed!\n'));
 
-    // Launch dashboard
-    logger.step('Launching monitoring dashboard...');
-    console.log();
-
-    const dashboardPath = join(__dirname, '../monitor/dashboard.js');
-
-    const dashboard = spawn('node', [dashboardPath, statusFile], {
-      stdio: 'inherit'
-    });
-
-    dashboard.on('exit', (code) => {
-      if (code === 0) {
-        console.log(chalk.green.bold('\n✨ All deployments completed!\n'));
-        logger.info('For each successful deployment, tag and push:');
-        initialStatus.forEach(s => {
-          const extPath = extensionPaths.find(p => p.includes(s.slug)) || s.slug;
-          console.log(chalk.gray(`  cd ${extPath} && git tag ${s.version} && git push && git push --tags`));
+      // Show tag commands for successful deployments
+      const activeOnes = statuses.filter(s => s.status !== 'idle');
+      if (activeOnes.length > 0) {
+        logger.info('Tag and push successful deployments:');
+        activeOnes.forEach(s => {
+          console.log(chalk.gray(`  cd ${s.path} && git tag ${s.version} && git push && git push --tags`));
         });
         console.log();
       }
-      process.exit(code);
-    });
+    }
+    process.exit(code);
+  });
 
-    // Handle Ctrl+C
-    process.on('SIGINT', () => {
-      console.log('\n\n👋 Interrupted by user');
-      dashboard.kill();
-      process.exit(0);
-    });
-  }
+  // Handle Ctrl+C
+  process.on('SIGINT', () => {
+    console.log('\n\n👋 Interrupted by user');
+    dashboard.kill();
+    process.exit(0);
+  });
 }
